@@ -1,0 +1,267 @@
+<!DOCTYPE html><html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ball Runner Game</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(to top right, #f7b733, #fc4a1a);
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    #gameContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: start;
+      height: 100%;
+    }
+    #score {
+      font-size: 22px;
+      color: white;
+      padding: 10px;
+    }
+    #highScore {
+      font-size: 18px;
+      color: white;
+      margin-bottom: 5px;
+    }
+    canvas {
+      border: 3px solid #222;
+      border-radius: 10px;
+      background-color: #ffffff;
+      max-width: 100%;
+    }
+    #restartBtn {
+      display: none;
+      padding: 12px 24px;
+      font-size: 18px;
+      margin-top: 10px;
+      background-color: #1e90ff;
+      border: none;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    #restartBtn:hover {
+      background-color: #187bcd;
+    }
+  </style>
+</head>
+<body><div id="gameContainer">
+  <div id="scoreBoard">
+    <div id="highScore">High Score: 0</div>
+    <div id="score">Score: 0</div>
+  </div>
+  <canvas id="gameCanvas" width="800" height="300"></canvas>
+  <button id="restartBtn">Restart Game</button>
+</div><script>
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+
+  function resizeCanvas() {
+    const width = window.innerWidth > 800 ? 800 : window.innerWidth;
+    const height = 300;
+    canvas.width = width;
+    canvas.height = height;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  const jumpSound = new Audio("data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAACAAIICA");
+  const crashSound = new Audio("data:audio/wav;base64,UklGRlIAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAADiZmZmZmQ==");
+  const bgMusic = new Audio("https://cdn.pixabay.com/audio/2022/03/24/audio_7dcef01721.mp3");
+  bgMusic.loop = true;
+  bgMusic.volume = 0.5;
+
+  const particles = [];
+
+  class Particle {
+    constructor(x, y) {
+      this.x = x;
+      this.y = y;
+      this.radius = Math.random() * 3 + 2;
+      this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+      this.dx = (Math.random() - 0.5) * 4;
+      this.dy = (Math.random() - 1) * 4;
+      this.alpha = 1;
+    }
+    update() {
+      this.x += this.dx;
+      this.y += this.dy;
+      this.alpha -= 0.03;
+    }
+    draw() {
+      ctx.globalAlpha = this.alpha;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = this.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  const ball = {
+    x: 80,
+    y: 250,
+    radius: 20,
+    color: "#1e90ff",
+    dy: 0,
+    gravity: 0.7,
+    jumpPower: -12,
+    grounded: false,
+    jump() {
+      if (this.grounded) {
+        this.dy = this.jumpPower;
+        this.grounded = false;
+        jumpSound.currentTime = 0;
+        jumpSound.play();
+      }
+    },
+    update() {
+      this.dy += this.gravity;
+      this.y += this.dy;
+
+      if (this.y + this.radius > canvas.height) {
+        this.y = canvas.height - this.radius;
+        this.dy = 0;
+        this.grounded = true;
+        for (let i = 0; i < 10; i++) {
+          particles.push(new Particle(this.x, this.y + this.radius));
+        }
+      }
+    },
+    draw() {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+      ctx.fillStyle = this.color;
+      ctx.fill();
+      ctx.closePath();
+    },
+    reset() {
+      this.y = 250;
+      this.dy = 0;
+      this.grounded = false;
+    }
+  };
+
+  class Obstacle {
+    constructor() {
+      this.width = 30 + Math.random() * 20;
+      this.height = 30 + Math.random() * 50;
+      this.x = canvas.width;
+      this.y = canvas.height - this.height;
+      this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+      this.speed = 6;
+    }
+    update() {
+      this.x -= this.speed;
+    }
+    draw() {
+      ctx.fillStyle = this.color;
+      ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+  }
+
+  let obstacles = [];
+  let frame = 0;
+  let score = 0;
+  let highScore = localStorage.getItem("ballHighScore") || 0;
+  document.getElementById("highScore").innerText = `High Score: ${highScore}`;
+  let gameOver = false;
+
+  function handleObstacles() {
+    if (frame % 90 === 0) {
+      obstacles.push(new Obstacle());
+    }
+
+    obstacles.forEach((obs, index) => {
+      obs.update();
+      obs.draw();
+
+      if (
+        ball.x + ball.radius > obs.x &&
+        ball.x - ball.radius < obs.x + obs.width &&
+        ball.y + ball.radius > obs.y
+      ) {
+        gameOver = true;
+        crashSound.play();
+        bgMusic.pause();
+        document.getElementById("restartBtn").style.display = "block";
+        if (score > highScore) {
+          localStorage.setItem("ballHighScore", score);
+          document.getElementById("highScore").innerText = `High Score: ${score}`;
+        }
+      }
+
+      if (obs.x + obs.width < 0) {
+        obstacles.splice(index, 1);
+        score++;
+        document.getElementById("score").innerText = "Score: " + score;
+      }
+    });
+  }
+
+  function handleParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      particles[i].update();
+      particles[i].draw();
+      if (particles[i].alpha <= 0) {
+        particles.splice(i, 1);
+      }
+    }
+  }
+
+  function animate() {
+    if (gameOver) {
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#fff";
+      ctx.font = "36px Arial";
+      ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ball.update();
+    ball.draw();
+    handleObstacles();
+    handleParticles();
+    frame++;
+    requestAnimationFrame(animate);
+  }
+
+  function restartGame() {
+    ball.reset();
+    obstacles = [];
+    frame = 0;
+    score = 0;
+    gameOver = false;
+    document.getElementById("score").innerText = "Score: 0";
+    document.getElementById("restartBtn").style.display = "none";
+    bgMusic.currentTime = 0;
+    bgMusic.play();
+    animate();
+  }
+
+  document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") ball.jump();
+  });
+
+  window.addEventListener("click", () => ball.jump());
+  window.addEventListener("touchstart", () => ball.jump());
+
+  bgMusic.play();
+  animate();
+</script></body>
+</html>
